@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ingest import ingest_text, ingest_file, ingest_url, qdrant_client, COLLECTION_NAME
-from retrieve import retrieve
+from agent import run_agent
 
 app = FastAPI(title="Engram API", version="2.0.0")
 
@@ -43,6 +43,10 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[dict]
+    query_type: str
+    retrieval_grade: str
+    was_rewritten: bool
+
 
 class LibraryItem(BaseModel):
     title: str
@@ -174,20 +178,22 @@ def library_endpoint():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(body: ChatRequest):
-
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question field cannot be empty")
 
-    result = retrieve(
+    result = run_agent(
         question=body.question,
         filter_type=body.filter_type
     )
 
     return ChatResponse(
         answer=result["answer"],
-        sources=result["sources"]
+        sources=result["sources"],
+        query_type=result["query_type"],
+        retrieval_grade=result["retrieval_grade"],
+        was_rewritten=result["was_rewritten"],
     )
- 
+
 
 
 
