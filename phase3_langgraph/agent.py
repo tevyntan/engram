@@ -1,0 +1,237 @@
+import os
+from typing import Optional
+from dotenv import load_dotenv
+from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, END
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_qdrant import QdrantVectorStore
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+load_dotenv()
+
+QDRANT_HOST     = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT     = int(os.getenv("QDRANT_PORT", 6333))
+COLLECTION_NAME = "engram"
+EMBEDDING_MODEL = "text-embedding-3-small"
+CHAT_MODEL      = "gpt-4o-mini"
+TOP_K           = 5
+MAX_RETRIES     = 2
+
+qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+embeddings = OpenAIEmbeddings(
+    model=EMBEDDING_MODEL,
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+llm = ChatOpenAI(
+    model=CHAT_MODEL,
+    temperature=0.2,
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+class AgentState(TypedDict):
+    question:           str
+    query_type:         str
+    rewritten_question: Optional[str]
+    chunks:             list
+    retrieval_grade:    str
+    answer:             str
+    sources:            list
+    filter_type:        Optional[str]
+    retry_count:        int
+
+def _build_qdrant_filter(filter_type: str):
+    if not filter_type:
+        return None
+    return Filter(
+        must=[
+            FieldCondition(
+                key="metadata.content_type",
+                match=MatchValue(value=filter_type)
+            )
+        ]
+    )
+
+def _format_context(chunks: list) -> str:
+    return "\n\n---\n\n".join(
+        f"[Source {i+1}] (relevance: {score:.2f})\n{doc.page_content}"
+        for i, (doc, score) in enumerate(chunks)
+    )
+
+def _format_sources(chunks: list) -> list[dict]:
+    return [
+        {
+            "text": doc.page_content,
+            "score": score,
+            "metadata": doc.metadata
+        }
+        for doc, score in chunks
+    ]
+
+def analyze_query(state: AgentState) -> dict:
+    prompt = ChatPromptTemplate.from_template("""
+You are analyzing a user query for a personal memory engine.
+Classify the query into exactly one of these types:
+- "specific": the user is looking for a specific memory, fact, or piece of information
+- "summary": the user wants a summary or overview of a topic
+- "comparison": the user wants to compare or contrast multiple things
+
+Reply with ONLY the single word: specific, summary, or comparison.
+
+Query: {question}
+""")
+    chain = prompt | llm | StrOutputParser()
+    raw = chain.invoke({"question": state["question"]}).strip().lower()
+    query_type = raw if raw in ("specific", "summary", "comparison") else "specific"
+    return {"query_type": query_type}
+
+def retrieve_chunks(state: AgentState) -> dict:
+    query = state.get("rewritten_question") or state["question"]
+    vector_store = QdrantVectorStore(
+        client=qdrant_client,
+        collection_name=COLLECTION_NAME,
+        embedding=embeddings,
+    )
+    qdrant_filter = _build_qdrant_filter(state.get("filter_type"))
+    chunks = vector_store.similarity_search_with_score(
+        query=query,
+        k=TOP_K,
+        filter=qdrant_filter,
+    )
+    return {"chunks": chunks}
+
+def grade_retrieval(state: AgentState) -> dict:
+    if not state["chunks"]:
+        return {"retrieval_grade": "poor"}
+
+    context = _format_context(state["chunks"])
+    prompt = ChatPromptTemplate.from_template("""
+You are grading whether retrieved document chunks are relevant to a user question.
+Reply with ONLY the single word: good or poor.
+
+- "good": the chunks contain information that meaningfully helps answer the question
+- "poor": the chunks are off-topic, too vague, or clearly do not address the question
+
+Question: {question}
+
+Retrieved chunks:
+{context}
+""")
+    chain = prompt | llm | StrOutputParser()
+    raw = chain.invoke({
+        "question": state["question"],
+        "context": context,
+    }).strip().lower()
+    grade = raw if raw in ("good", "poor") else "poor"
+    return {"retrieval_grade": grade}
+
+def rewrite_query(state: AgentState) -> dict:
+    prompt = ChatPromptTemplate.from_template("""
+A vector search using the query below returned poor results.
+Rewrite the query to be more specific and likely to match relevant documents.
+Reply with ONLY the rewritten query, nothing else.
+
+Original query: {question}
+""")
+    chain = prompt | llm | StrOutputParser()
+    rewritten = chain.invoke({"question": state["question"]}).strip()
+    return {
+        "rewritten_question": rewritten,
+        "retry_count": state.get("retry_count", 0) + 1,
+    }
+
+def generate(state: AgentState) -> dict:
+    if not state["chunks"]:
+        return {
+            "answer": "Sorry, I don't seem to have any information on that in my library. Let me try to help with what I do know: I wasn't able to find any relevant memories for your question.",
+            "sources": [],
+        }
+
+    context = _format_context(state["chunks"])
+    sources = _format_sources(state["chunks"])
+
+    prompt = ChatPromptTemplate.from_template("""
+You are Engram, a personal memory assistant.
+Answer the user's question using the context provided below as your primary source.
+If the context fully answers the question, base your answer on it alone.
+If the context only partially answers the question, supplement with your own general knowledge to fill the gaps — but clearly label those parts with "[General Knowledge]".
+If the context contains no relevant information, start your response with "Sorry, 
+I don't seem to have any information on that in my library. Let me try to help with what I do know:" and then answer from your own general knowledge.
+Never fabricate specific personal details, dates, names, or facts that are not in the context.
+
+CONTEXT:
+{context}
+
+QUESTION:
+{question}
+
+ANSWER:""")
+
+    chain = prompt | llm | StrOutputParser()
+    answer = chain.invoke({
+        "context": context,
+        "question": state.get("rewritten_question") or state["question"],
+    })
+    return {"answer": answer, "sources": sources}
+
+def route_after_grading(state: AgentState) -> str:
+    if state["retrieval_grade"] == "good":
+        return "generate"
+    if state.get("retry_count", 0) >= MAX_RETRIES:
+        return "generate"
+    return "rewrite_query"
+
+def build_graph():
+    graph = StateGraph(AgentState)
+
+    graph.add_node("analyze_query",   analyze_query)
+    graph.add_node("retrieve",        retrieve_chunks)
+    graph.add_node("grade_retrieval", grade_retrieval)
+    graph.add_node("rewrite_query",   rewrite_query)
+    graph.add_node("generate",        generate)
+
+    graph.set_entry_point("analyze_query")
+
+    graph.add_edge("analyze_query",   "retrieve")
+    graph.add_edge("retrieve",        "grade_retrieval")
+    graph.add_edge("rewrite_query",   "retrieve")
+    graph.add_edge("generate",        END)
+
+    graph.add_conditional_edges(
+        "grade_retrieval",
+        route_after_grading,
+        {
+            "generate":      "generate",
+            "rewrite_query": "rewrite_query",
+        }
+    )
+
+    return graph.compile()
+
+agent = build_graph()
+
+def run_agent(question: str, filter_type: str = None) -> dict:
+    initial_state = {
+        "question":           question,
+        "query_type":         "",
+        "rewritten_question": None,
+        "chunks":             [],
+        "retrieval_grade":    "",
+        "answer":             "",
+        "sources":            [],
+        "filter_type":        filter_type,
+        "retry_count":        0,
+    }
+    final_state = agent.invoke(initial_state)
+    return {
+        "answer":          final_state["answer"],
+        "sources":         final_state["sources"],
+        "query_type":      final_state["query_type"],
+        "retrieval_grade": final_state["retrieval_grade"],
+        "was_rewritten":   final_state.get("rewritten_question") is not None,
+    }
+
