@@ -1,11 +1,12 @@
 import os
 import tempfile
+from collections import defaultdict
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from ingest import ingest_text, ingest_file, ingest_url
+from ingest import ingest_text, ingest_file, ingest_url, qdrant_client, COLLECTION_NAME
 from retrieve import retrieve
 
 app = FastAPI(title="Engram API", version="2.0.0")
@@ -42,6 +43,17 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[dict]
+
+class LibraryItem(BaseModel):
+    title: str
+    content_type: str
+    source: str
+    chunks: int
+    date_ingested: Optional[str] = None
+
+class LibraryResponse(BaseModel):
+    items: list[LibraryItem]
+    total: int
 
 @app.get("/health")
 def health_check():
@@ -111,6 +123,54 @@ def ingest_url_endpoint(body: IngestURLRequest):
         title=body.title,
         content_type=body.content_type
     )
+
+@app.get("/library", response_model=LibraryResponse)
+def library_endpoint():
+    try:
+        collections = [c.name for c in qdrant_client.get_collections().collections]
+        if COLLECTION_NAME not in collections:
+            return LibraryResponse(items=[], total=0)
+
+        groups = defaultdict(lambda: {
+            "content_type": "",
+            "source": "",
+            "chunks": 0,
+            "date_ingested": None,
+        })
+
+        offset = None
+        while True:
+            batch, offset = qdrant_client.scroll(
+                collection_name=COLLECTION_NAME,
+                limit=250,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in batch:
+                meta = (point.payload or {}).get("metadata", {})
+                title = meta.get("title") or "Untitled"
+                groups[title]["content_type"] = meta.get("content_type", "")
+                groups[title]["source"]       = meta.get("source", "")
+                groups[title]["date_ingested"] = meta.get("date_ingested", None)
+                groups[title]["chunks"]       += 1
+            if offset is None:
+                break
+
+        items = [
+            LibraryItem(
+                title=title,
+                content_type=g["content_type"],
+                source=g["source"],
+                chunks=g["chunks"],
+                date_ingested=g["date_ingested"],
+            )
+            for title, g in sorted(groups.items(), key=lambda x: x[0].lower())
+        ]
+        return LibraryResponse(items=items, total=len(items))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(body: ChatRequest):

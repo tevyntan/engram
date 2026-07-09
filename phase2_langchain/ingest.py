@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from langchain_openai import OpenAIEmbeddings
@@ -65,7 +66,8 @@ def ingest_text(text: str, title: str, content_type: str = "note") -> dict:
         metadata={
             "title": title,
             "content_type": content_type,
-            "source": "direct_input"
+            "source": "direct_input",
+            "date_ingested": datetime.now(timezone.utc).isoformat(),
         }
     )
     return _ingest_documents([doc])
@@ -82,11 +84,13 @@ def ingest_file(file_path: str, title: str, content_type: str = "document") -> d
 
     docs = loader.load()
 
+    ingested_at = datetime.now(timezone.utc).isoformat()
     for doc in docs:
         doc.metadata.update({
             "title": title,
             "content_type": content_type,
             "source": file_path,
+            "date_ingested": ingested_at,
         })
 
     return _ingest_documents(docs)
@@ -101,11 +105,13 @@ def ingest_url(url: str, title: str, content_type: str = "article") -> dict:
 
     docs = loader.load()
 
+    ingested_at = datetime.now(timezone.utc).isoformat()
     for doc in docs:
         doc.metadata.update({
             "title": title,
             "content_type": content_type,
             "source": url,
+            "date_ingested": ingested_at,
         })
 
     return _ingest_documents(docs)
