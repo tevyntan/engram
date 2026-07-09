@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ingest import ingest_text, ingest_file, ingest_url
-from retrieve import retrieve
+from backend.retrieve import retrieve
 
 app = FastAPI(title="Engram API", version="2.0.0")
 
