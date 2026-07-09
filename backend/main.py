@@ -87,7 +87,7 @@ async def ingest_file_endpoint(
             content_type=content_type
         )
     finally:
-        os.unlink(tmp_pth)
+        os.unlink(tmp_path)
     
     return IngestResponse(
         chunks_ingested=result["chunks_ingested"],
