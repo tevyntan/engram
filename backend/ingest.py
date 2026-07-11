@@ -25,7 +25,10 @@ VECTOR_SIZE     = 1536
 CHUNK_SIZE      = 2000
 CHUNK_OVERLAP   = 200
 
-qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+qdrant_client = QdrantClient(
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY")
+)
 
 embeddings = OpenAIEmbeddings(
     model=EMBEDDING_MODEL,
