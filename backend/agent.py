@@ -20,7 +20,10 @@ CHAT_MODEL      = "gpt-4o-mini"
 TOP_K           = 5
 MAX_RETRIES     = 2
 
-qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+qdrant_client = QdrantClient(
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY")
+)
 
 embeddings = OpenAIEmbeddings(
     model=EMBEDDING_MODEL,
