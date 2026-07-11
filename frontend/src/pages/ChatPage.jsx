@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 
-const API = 'http://localhost:8000'
+const API = 'https://engram-production-b370.up.railway.app'
 
 export default function ChatPage({ conversation, onNewConversation, onUpdateConversation }) {
   const [input, setInput] = useState('')
