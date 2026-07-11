@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 
-const API = 'https://engram-production-b370.up.railway.app'
+const API = import.meta.env.VITE_API_URL
 
 const TABS = [
   { id: 'text',  label: 'Text',  defaultType: 'note' },
