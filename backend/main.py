@@ -13,7 +13,7 @@ app = FastAPI(title="Engram API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "https://engram-livid.vercel.app/library"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
