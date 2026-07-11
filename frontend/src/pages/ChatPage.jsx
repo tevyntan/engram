@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 
-const API = 'https://engram-production-b370.up.railway.app'
+const API = import.meta.env.VITE_API_URL
 
 export default function ChatPage({ conversation, onNewConversation, onUpdateConversation }) {
   const [input, setInput] = useState('')

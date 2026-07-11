@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-const API = 'https://engram-production-b370.up.railway.app'
+const API = import.meta.env.VITE_API_URL
 
 const BADGE = {
   youtube:  'bg-red-50 text-red-600 border-red-100',
