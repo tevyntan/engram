@@ -68,11 +68,15 @@ def ingest_text_endpoint(body: IngestTextRequest):
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
     
-    result = ingest_text(
-        text=body.text,
-        title=body.title,
-        content_type=body.content_type
-    )
+    try:
+        result = ingest_text(
+            text=body.text,
+            title=body.title,
+            content_type=body.content_type
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
     return IngestResponse(
         chunks_ingested=result["chunks_ingested"],
         title = body.title,
@@ -102,6 +106,8 @@ async def ingest_file_endpoint(
             title=title,
             content_type=content_type
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         os.unlink(tmp_path)
     
@@ -117,11 +123,15 @@ def ingest_url_endpoint(body: IngestURLRequest):
     if not body.url.strip():
         raise HTTPException(status_code=400, detail="URL cannot be empty.")
 
-    result = ingest_url(
-        url=body.url,
-        title=body.title,
-        content_type=body.content_type
-    )
+    try:
+        result = ingest_url(
+            url=body.url,
+            title=body.title,
+            content_type=body.content_type
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
     return IngestResponse(
         chunks_ingested=result["chunks_ingested"],
         title=body.title,
@@ -181,10 +191,13 @@ def chat_endpoint(body: ChatRequest):
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question field cannot be empty")
 
-    result = run_agent(
-        question=body.question,
-        filter_type=body.filter_type
-    )
+    try:
+        result = run_agent(
+            question=body.question,
+            filter_type=body.filter_type
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     return ChatResponse(
         answer=result["answer"],
