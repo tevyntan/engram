@@ -1,13 +1,15 @@
 import os
 import tempfile
+import json
 from collections import defaultdict
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ingest import ingest_text, ingest_file, ingest_url, qdrant_client, COLLECTION_NAME
-from agent import run_agent
+from agent import run_agent, stream_agent
 
 app = FastAPI(title="Engram API", version="2.0.0")
 
@@ -207,6 +209,30 @@ def chat_endpoint(body: ChatRequest):
         was_rewritten=result["was_rewritten"],
     )
 
+def _sse_generator(question: str, filter_type: str | None):
+    try:
+        for event_type, payload in stream_agent(question, filter_type):
+            if event_type == "token":
+                data = json.dumps({"type": "token", "content": payload})
+            else:
+                data = json.dumps({"type": "done", **payload})
+            yield f"data: {data}\n\n"
+    except Exception as e:
+        error_data = json.dumps({"type": "error", "detail": str(e)})
+        yield f"data: {error_data}\n\n"
 
+@app.post("/chat/stream")
+def chat_stream_endpoint(body: ChatRequest):
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="question field cannot be empty")
+    
+    return StreamingResponse(
+        _sse_generator(body.question, body.filter_type),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 

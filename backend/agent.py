@@ -20,6 +20,23 @@ CHAT_MODEL      = "gpt-4o-mini"
 TOP_K           = 5
 MAX_RETRIES     = 2
 
+GENERATE_PROMPT = ChatPromptTemplate.from_template("""
+You are Engram, a personal memory assistant.
+Answer the user's question using the context provided below as your primary source.
+If the context fully answers the question, base your answer on it alone.
+If the context only partially answers the question, supplement with your own general knowledge to fill the gaps — but clearly label those parts with "[General Knowledge]".
+If the context contains no relevant information, start your response with "Sorry, 
+I don't seem to have any information on that in my library. Let me try to help with what I do know:" and then answer from your own general knowledge.
+Never fabricate specific personal details, dates, names, or facts that are not in the context.
+
+CONTEXT:
+{context}
+
+QUESTION:
+{question}
+
+ANSWER:""")
+
 qdrant_client = QdrantClient(
     url=os.getenv("QDRANT_URL"),
     api_key=os.getenv("QDRANT_API_KEY")
@@ -34,6 +51,13 @@ llm = ChatOpenAI(
     model=CHAT_MODEL,
     temperature=0.2,
     api_key=os.getenv("OPENAI_API_KEY")
+)
+
+streaming_llm = ChatOpenAI(
+    model=CHAT_MODEL,
+    temperature=0.2,
+    api_key=os.getenv("OPENAI_API_KEY"),
+    streaming=True,
 )
 
 class AgentState(TypedDict):
@@ -238,3 +262,58 @@ def run_agent(question: str, filter_type: str = None) -> dict:
         "was_rewritten":   final_state.get("rewritten_question") is not None,
     }
 
+def stream_agent(question: str, filter_type: str = None):
+    """
+    Runs the same graph logic as run_agent(), but yields (event_type, payload)
+    tuples so the caller can format them as SSE. The generation step streams
+    tokens one at a time instead of returning a single string.
+    """
+
+    state: AgentState = {
+    "question":           question,
+    "query_type":         "",
+    "rewritten_question": None,
+    "chunks":             [],
+    "retrieval_grade":    "",
+    "answer":             "",
+    "sources":            [],
+    "filter_type":        filter_type,
+    "retry_count":        0,
+    }
+
+    state.update(analyze_query(state))
+    state.update(retrieve_chunks(state))
+    state.update(grade_retrieval(state))
+
+    while route_after_grading(state) == "rewrite_query":
+        state.update(rewrite_query(state))
+        state.update(retrieve_chunks(state))
+        state.update(grade_retrieval(state))
+
+
+    if not state["chunks"]:
+        fallback = (
+            "Sorry, I don't seem to have any information on that in my library. "
+            "Let me try to help with what I do know: I wasn't able to find any "
+            "relevant memories for your question."
+        )
+        for word in fallback.split(" "):
+            yield ("token", word + " ")
+        sources = []
+    else:
+        context = _format_context(state["chunks"])
+        sources = _format_sources(state["chunks"])
+        prompt_value = GENERATE_PROMPT.format_prompt(
+        context=context,
+        question=state.get("rewritten_question") or state["question"],
+        )
+        for chunk in streaming_llm.stream(prompt_value):
+            if chunk.content:
+                yield ("token", chunk.content)
+
+    yield ("done", {
+            "sources":         sources,
+            "query_type":      state["query_type"],
+            "retrieval_grade": state["retrieval_grade"],
+            "was_rewritten":   state.get("rewritten_question") is not None,
+        })

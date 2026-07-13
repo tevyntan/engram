@@ -6,6 +6,7 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [now, setNow] = useState(Date.now())
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -14,6 +15,12 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  useEffect(() => {
+    if (!loading) return
+    const interval = setInterval(() => setNow(Date.now()), 100)
+    return () => clearInterval(interval)
+  }, [loading])
 
   async function handleSend() {
     const question = input.trim()
@@ -28,7 +35,7 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
     onUpdateConversation(convId, conv => ({
       ...conv,
       title: conv.messages.length === 0 ? question.slice(0, 42) : conv.title,
-      messages: [...conv.messages, userMessage],
+      messages: [...conv.messages, userMessage, { role: 'assistant', content: '', streaming: true, sources: [], startedAt: Date.now() }],
     }))
 
     setInput('')
@@ -36,26 +43,63 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
     setError(null)
 
     try {
-      const res = await fetch(`${API}/chat`, {
+      const res = await fetch(`${API}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question }),
       })
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Server error ${res.status}`)
       }
-      const data = await res.json()
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-      onUpdateConversation(convId, conv => ({
-        ...conv,
-        messages: [
-          ...conv.messages,
-          { role: 'assistant', content: data.answer, sources: data.sources || [] },
-        ],
-      }))
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop()
+
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue
+          const json = JSON.parse(part.slice(6))
+
+          if (json.type === 'token') {
+            onUpdateConversation(convId, conv => {
+              const messages = [...conv.messages]
+              const last = messages[messages.length - 1]
+              messages[messages.length - 1] = { ...last, content: last.content + json.content }
+              return { ...conv, messages }
+            })
+          } else if (json.type === 'done') {
+            onUpdateConversation(convId, conv => {
+              const messages = [...conv.messages]
+              const last = messages[messages.length - 1]
+              messages[messages.length - 1] = {
+                ...last,
+                streaming: false,
+                sources: json.sources || [],
+                elapsedMs: Date.now() - (last.startedAt || Date.now()),
+              }
+              return { ...conv, messages }
+            })
+          } else if (json.type === 'error') {
+            throw new Error(json.detail || 'Stream error')
+          }
+        }
+      }
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
+      onUpdateConversation(convId, conv => {
+        const messages = [...conv.messages]
+        const last = messages[messages.length - 1]
+        if (last?.streaming) messages[messages.length - 1] = { ...last, streaming: false }
+        return { ...conv, messages }
+      })
     } finally {
       setLoading(false)
       inputRef.current?.focus()
@@ -87,11 +131,15 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
           msg.role === 'user' ? (
             <UserMessage key={i} content={msg.content} />
           ) : (
-            <AssistantMessage key={i} content={msg.content} sources={msg.sources} />
+            <AssistantMessage
+              key={i}
+              content={msg.content}
+              sources={msg.sources}
+              streaming={msg.streaming}
+              elapsedMs={msg.streaming ? now - msg.startedAt : msg.elapsedMs}
+            />
           )
         )}
-
-        {loading && <LoadingMessage />}
 
         {error && (
           <div className="flex justify-center">
@@ -162,7 +210,7 @@ function UserMessage({ content }) {
   )
 }
 
-function AssistantMessage({ content, sources }) {
+function AssistantMessage({ content, sources, streaming, elapsedMs }) {
   return (
     <div className="flex justify-start">
       <div className="max-w-2xl space-y-2.5">
@@ -172,8 +220,21 @@ function AssistantMessage({ content, sources }) {
           </div>
           <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-slate-700 leading-relaxed shadow-sm whitespace-pre-wrap">
             {content}
+            {streaming && (
+              <span className="inline-flex gap-1 items-center ml-1 align-middle">
+                <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            )}
           </div>
         </div>
+
+        {typeof elapsedMs === 'number' && (
+          <p className="ml-10 text-xs text-slate-300">
+            {streaming ? 'Thinking' : 'Responded in'} {(elapsedMs / 1000).toFixed(1)}s
+          </p>
+        )}
 
         {sources && sources.length > 0 && (
           <div className="ml-10 flex flex-wrap gap-2">
