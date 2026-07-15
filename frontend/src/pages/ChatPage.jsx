@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -31,6 +33,13 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
       convId = onNewConversation()
     }
 
+    // Capture history BEFORE appending the new user message,
+    // so it only contains prior turns (not the question we're about to send).
+    // Only the last 6 messages are kept to control context size and cost.
+    const chatHistory = messages
+      .slice(-6)
+      .map(m => ({ role: m.role, content: m.content }))
+
     const userMessage = { role: 'user', content: question }
     onUpdateConversation(convId, conv => ({
       ...conv,
@@ -46,7 +55,7 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
       const res = await fetch(`${API}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, chat_history: chatHistory }),
       })
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({}))
@@ -189,8 +198,8 @@ export default function ChatPage({ conversation, onNewConversation, onUpdateConv
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-64 text-center px-8 pt-20">
-      <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
-        <span className="text-3xl">🧠</span>
+      <div className="w-28 h-28 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4 overflow-hidden">
+        <img src="/Engram-Logo.png" alt="Engram logo" className="w-18 h-18 object-cover" />
       </div>
       <h2 className="text-lg font-semibold text-slate-700 mb-2">What's on your mind?</h2>
       <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
@@ -215,11 +224,11 @@ function AssistantMessage({ content, sources, streaming, elapsedMs }) {
     <div className="flex justify-start">
       <div className="max-w-2xl space-y-2.5">
         <div className="flex items-start gap-3">
-          <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <span className="text-indigo-600 text-xs font-bold">E</span>
+          <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5 overflow-hidden">
+            <img src="/Engram-Logo.png" alt="Engram" className="w-5 h-5 object-cover" />
           </div>
-          <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-slate-700 leading-relaxed shadow-sm whitespace-pre-wrap">
-            {content}
+          <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-slate-700 leading-relaxed shadow-sm markdown-body">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             {streaming && (
               <span className="inline-flex gap-1 items-center ml-1 align-middle">
                 <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -270,8 +279,8 @@ function LoadingMessage() {
   return (
     <div className="flex justify-start">
       <div className="flex items-start gap-3">
-        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-          <span className="text-indigo-600 text-xs font-bold">E</span>
+        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <img src="/Engram-Logo.png" alt="Engram" className="w-5 h-5 object-cover" />
         </div>
         <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3.5 shadow-sm">
           <div className="flex gap-1.5 items-center">
