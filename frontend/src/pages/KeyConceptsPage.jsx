@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import TitleSelector from '../components/TitleSelector'
 
 const API = import.meta.env.VITE_API_URL
@@ -192,7 +195,7 @@ export default function KeyConceptsPage() {
           <div className="space-y-8">
             {/* Markdown summary */}
             <div className="prose prose-sm prose-slate max-w-none rounded-2xl border border-gray-100 px-6 py-6 bg-slate-50 markdown-body">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{summary}</ReactMarkdown>
             </div>
 
             {/* Follow-up chat */}
@@ -217,7 +220,7 @@ export default function KeyConceptsPage() {
                     ) : (
                       <div key={i} className="flex justify-start">
                         <div className="max-w-xl bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-slate-700 leading-relaxed shadow-sm markdown-body">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
                           {msg.streaming && (
                             <span className="inline-flex gap-1 items-center ml-1 align-middle">
                               <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />

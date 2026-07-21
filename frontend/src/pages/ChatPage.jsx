@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -228,7 +231,7 @@ function AssistantMessage({ content, sources, streaming, elapsedMs }) {
             <img src="/Engram-Logo.png" alt="Engram" className="w-5 h-5 object-cover" />
           </div>
           <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-slate-700 leading-relaxed shadow-sm markdown-body">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
             {streaming && (
               <span className="inline-flex gap-1 items-center ml-1 align-middle">
                 <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
