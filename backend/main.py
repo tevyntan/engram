@@ -1,8 +1,12 @@
 import os
 import tempfile
 import json
+import logging
+import traceback
 from collections import defaultdict
 from typing import Optional
+
+logging.basicConfig(level=logging.INFO)
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -285,6 +289,7 @@ def library_endpoint():
         return LibraryResponse(items=items, total=len(items))
 
     except Exception as e:
+        logging.error("GET /library failed: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/library/{title}")
@@ -404,6 +409,7 @@ def library_titles_endpoint():
 
         return {"titles": sorted(seen.values(), key=lambda x: x["title"].lower())}
     except Exception as e:
+        logging.error("GET /library/titles failed: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
