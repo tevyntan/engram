@@ -47,7 +47,6 @@ Engram is a personal memory engine and AI study assistant. You feed it anything 
 - Synthetically generates test questions from stored chunks using `gpt-4o-mini` — no labeled test data needed
 - Runs each question through the full LangGraph agent
 - Grades retrieval success and answer quality with LLM-as-judge
-- Currently at 100% retrieval success rate and 100% answer quality on the test dataset
 
 ### Production observability
 - LangSmith tracing on every agent run
