@@ -44,9 +44,19 @@ Engram is a personal memory engine and AI study assistant. You feed it anything 
 - Delete individual memories
 
 ### Evaluation pipeline (`eval.py`)
-- Synthetically generates test questions from stored chunks using `gpt-4o-mini` — no labeled test data needed
+Two evaluation modes, both runnable from the same script:
+
+**Auto-eval** (default) — no labeled data required:
+- Pulls chunks from Qdrant and generates one realistic question per chunk using `gpt-4o-mini`
 - Runs each question through the full LangGraph agent
-- Grades retrieval success and answer quality with LLM-as-judge
+- Grades retrieval success (did the source chunk get retrieved?) and answer quality (`correct` / `partial` / `incorrect`) with LLM-as-judge
+
+**Golden set eval** (`--golden`) — against a hand-authored benchmark:
+- 23 questions across 6 categories in [`eval/evalset.csv`](eval/evalset.csv): `specific`, `summary`, `comparison`, `multi-turn`, `no-context`, and `ambiguous`
+- Multi-turn pairs (e.g. M1a → M1b) pass the prior turn's Q&A as chat history to test follow-up reasoning
+- `no-context` questions test hallucination resistance — the agent is expected to decline rather than fabricate
+- Uses `gpt-4o` as the judge, with a separate rubric for `no-context` questions (PASS = appropriate refusal)
+- Prints per-category pass rates and an overall score
 
 ### Production observability
 - LangSmith tracing on every agent run
