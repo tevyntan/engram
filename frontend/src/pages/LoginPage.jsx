@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { login } from '../auth'
 
 export default function LoginPage() {
@@ -7,6 +7,8 @@ export default function LoginPage() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = location.state?.from || '/feed'
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -14,7 +16,7 @@ export default function LoginPage() {
     setError(null)
     try {
       await login(password)
-      navigate('/feed')
+      navigate(from, { replace: true })
     } catch (err) {
       setError(err.message || 'Login failed.')
     } finally {

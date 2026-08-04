@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import FileTab from '../components/FileTab'
-import { getToken } from '../auth'
+import { getToken, isLoggedIn, login } from '../auth'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -15,6 +15,7 @@ function makeForm(contentType) {
 }
 
 export default function FeedPage() {
+  const [authed, setAuthed]     = useState(isLoggedIn())
   const [activeTab, setActiveTab] = useState('text')
   const [forms, setForms] = useState({
     text: { ...makeForm('note'),     text: '' },
@@ -112,7 +113,8 @@ export default function FeedPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full bg-white overflow-y-auto">
+    <div className="h-full bg-white overflow-y-auto relative">
+      {!authed && <AuthOverlay onAuth={() => setAuthed(true)} />}
       <div className="max-w-2xl mx-auto px-6 py-10">
 
         {/* Header */}
@@ -276,6 +278,60 @@ export default function FeedPage() {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+
+function AuthOverlay({ onAuth }) {
+  const [password, setPassword] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    try {
+      await login(password)
+      onAuth()
+    } catch (err) {
+      setError(err.message || 'Login failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm bg-white/60">
+      <div className="w-full max-w-sm mx-4 px-8 py-10 rounded-2xl border border-gray-100 shadow-lg bg-white">
+        <h2 className="text-lg font-bold text-slate-800 mb-1">Owner access</h2>
+        <p className="text-sm text-slate-400 mb-6">Enter your password to add memories.</p>
+
+        {error && (
+          <div className="mb-4 rounded-lg px-3 py-2.5 text-sm border bg-red-50 border-red-200 text-red-600">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+            required
+            autoFocus
+            className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 transition-all"
+          />
+          <button
+            type="submit"
+            disabled={loading || !password}
+            className="w-full py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white disabled:text-slate-400 text-sm font-semibold transition-colors"
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
 
 function Spinner() {
   return (

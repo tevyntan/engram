@@ -1,16 +1,11 @@
 import { useState } from 'react'
-import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, NavLink, useNavigate } from 'react-router-dom'
 import ChatPage from './pages/ChatPage.jsx'
 import FeedPage from './pages/FeedPage.jsx'
 import LibraryPage from './pages/LibraryPage.jsx'
 import FlashcardsPage from './pages/FlashcardsPage.jsx'
 import KeyConceptsPage from './pages/KeyConceptsPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
-import { isLoggedIn } from './auth.js'
-
-function ProtectedRoute({ children }) {
-  return isLoggedIn() ? children : <Navigate to="/login" replace />
-}
 
 export default function App() {
   const [conversations, setConversations] = useState([])
@@ -49,7 +44,7 @@ export default function App() {
         <nav className="px-3 pt-3 space-y-0.5">
           {[
             { to: '/', label: 'Chat', icon: <ChatIcon /> },
-            ...(isLoggedIn() ? [{ to: '/feed', label: 'Feed', icon: <FeedIcon /> }] : []),
+            { to: '/feed', label: 'Feed', icon: <FeedIcon /> },
             { to: '/library', label: 'Library', icon: <LibraryIcon /> },
             { to: '/flashcards', label: 'Flashcards', icon: <FlashcardsIcon /> },
             { to: '/concepts', label: 'Key Concepts', icon: <ConceptsIcon /> },
@@ -117,7 +112,7 @@ export default function App() {
             }
           />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
+          <Route path="/feed" element={<FeedPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/flashcards" element={<FlashcardsPage />} />
           <Route path="/concepts" element={<KeyConceptsPage />} />
