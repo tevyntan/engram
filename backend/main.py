@@ -7,7 +7,7 @@ from collections import defaultdict
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -20,6 +20,8 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelec
 
 from ingest import ingest_text, ingest_file, ingest_url, ensure_payload_indexes, qdrant_client, COLLECTION_NAME
 from agent import run_agent, stream_agent
+from auth import create_login_route, verify_jwt
+from rate_limit import rate_limit
 
 app = FastAPI(title="Engram API", version="2.0.0")
 
@@ -30,6 +32,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.post("/login")(create_login_route())
 
 SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx"}
 MAX_FLASHCARDS = 12
@@ -156,7 +160,7 @@ def _fetch_chunks_for_titles(titles: list[str]) -> str:
 def health_check():
     return {"status": "ok"}
 
-@app.post("/ingest/text", response_model=IngestResponse)
+@app.post("/ingest/text", response_model=IngestResponse, dependencies=[Depends(verify_jwt)])
 def ingest_text_endpoint(body: IngestTextRequest):
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
@@ -177,7 +181,7 @@ def ingest_text_endpoint(body: IngestTextRequest):
         content_type=body.content_type
     )
 
-@app.post("/ingest/file", response_model=IngestResponse)
+@app.post("/ingest/file", response_model=IngestResponse, dependencies=[Depends(verify_jwt)])
 async def ingest_file_endpoint(
     file: UploadFile = File(...),
     title: str = Form(...),
@@ -213,7 +217,7 @@ async def ingest_file_endpoint(
         content_type=content_type
     )
 
-@app.post("/ingest/url", response_model=IngestResponse)
+@app.post("/ingest/url", response_model=IngestResponse, dependencies=[Depends(verify_jwt)])
 def ingest_url_endpoint(body: IngestURLRequest):
 
     if not body.url.strip():
@@ -292,7 +296,7 @@ def library_endpoint():
         logging.error("GET /library failed: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/library/{title}")
+@app.delete("/library/{title}", dependencies=[Depends(verify_jwt)])
 def delete_library_item(title: str):
     try:
         ensure_payload_indexes()
@@ -326,7 +330,7 @@ def delete_library_item(title: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(rate_limit)])
 def chat_endpoint(body: ChatRequest):
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question field cannot be empty")
@@ -361,7 +365,7 @@ def _sse_generator(question: str, filter_type: str | None, collection: str | Non
         error_data = json.dumps({"type": "error", "detail": str(e)})
         yield f"data: {error_data}\n\n"
 
-@app.post("/chat/stream")
+@app.post("/chat/stream", dependencies=[Depends(rate_limit)])
 def chat_stream_endpoint(body: ChatRequest):
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question field cannot be empty")
@@ -413,7 +417,7 @@ def library_titles_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/flashcards", response_model=FlashcardsResponse)
+@app.post("/flashcards", response_model=FlashcardsResponse, dependencies=[Depends(rate_limit)])
 def flashcards_endpoint(body: FlashcardsRequest):
     if not body.titles:
         raise HTTPException(status_code=400, detail="titles cannot be empty")
@@ -454,7 +458,7 @@ Generate exactly {num_cards} flashcards.
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/concepts", response_model=ConceptsResponse)
+@app.post("/concepts", response_model=ConceptsResponse, dependencies=[Depends(rate_limit)])
 def concepts_endpoint(body: ConceptsRequest):
     if not body.titles:
         raise HTTPException(status_code=400, detail="titles cannot be empty")
@@ -526,7 +530,7 @@ ANSWER:""")
         yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
 
 
-@app.post("/concepts/chat/stream")
+@app.post("/concepts/chat/stream", dependencies=[Depends(rate_limit)])
 def concepts_chat_stream_endpoint(body: ConceptsChatRequest):
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="question cannot be empty")

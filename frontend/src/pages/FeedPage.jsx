@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import FileTab from '../components/FileTab'
+import { getToken } from '../auth'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -61,7 +62,7 @@ export default function FeedPage() {
       if (activeTab === 'text') {
         res = await fetch(`${API}/ingest/text`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
           body: JSON.stringify({
             title:        form.title.trim(),
             content_type: form.content_type.trim() || 'note',
@@ -72,7 +73,7 @@ export default function FeedPage() {
       } else {
         res = await fetch(`${API}/ingest/url`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
           body: JSON.stringify({
             url:          form.url.trim(),
             title:        form.title.trim(),

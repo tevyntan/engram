@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getToken, isLoggedIn } from '../auth'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -78,7 +79,7 @@ export default function LibraryPage() {
   async function confirmDelete(title) {
     setCard(title, { deleting: true, error: null })
     try {
-      const res = await fetch(`${API}/library/${encodeURIComponent(title)}`, { method: 'DELETE' })
+      const res = await fetch(`${API}/library/${encodeURIComponent(title)}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Server error ${res.status}`)
@@ -198,7 +199,7 @@ export default function LibraryPage() {
                       <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${badgeClass(item.content_type)}`}>
                         {item.content_type || 'unknown'}
                       </span>
-                      {!state.confirming && (
+                      {isLoggedIn() && !state.confirming && (
                         <button
                           type="button"
                           onClick={() => requestDelete(item.title)}

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { getToken } from '../auth'
 
 const API = import.meta.env.VITE_API_URL
 const ACCEPTED_EXTENSIONS = ['pdf', 'docx']
@@ -112,7 +113,7 @@ export default function FileTab() {
     fd.append('content_type', contentType.trim() || 'lecture')
     if (collection.trim()) fd.append('collection', collection.trim())
 
-    const res = await fetch(`${API}/ingest/file`, { method: 'POST', body: fd })
+    const res = await fetch(`${API}/ingest/file`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }, body: fd })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err.detail || `Server error ${res.status}`)

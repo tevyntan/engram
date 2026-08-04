@@ -17,3 +17,5 @@ beautifulsoup4
 requests
 python-multipart==0.0.29
 fastembed==0.8.0
+PyJWT
+upstash-redis
